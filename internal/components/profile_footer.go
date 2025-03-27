@@ -1,14 +1,17 @@
 package components
 
-import "github.com/rivo/tview"
+import (
+	"GoSQL/internal/config"
+	"GoSQL/internal/ui/router"
+	"context"
 
-func CreateProfileFooter() *tview.Grid {
+	"github.com/rivo/tview"
+)
+
+func CreateProfileFooter(ctx context.Context) *tview.Grid {
 	buttonGrid := tview.NewGrid().
 		SetRows(1)
 
-	chooseButton := tview.NewButton("Choose").SetSelectedFunc(func() {
-		println("Choose action triggered")
-	})
 	deleteButton := tview.NewButton("Delete").SetSelectedFunc(func() {
 		println("Delete action triggered")
 	})
@@ -16,13 +19,13 @@ func CreateProfileFooter() *tview.Grid {
 		println("Update action triggered")
 	})
 	newButton := tview.NewButton("New").SetSelectedFunc(func() {
-		println("New action triggered")
+		router.NavigatePage(config.CreateProfilePage, -1, ctx)
 	})
 
-	buttonGrid.AddItem(chooseButton, 0, 0, 1, 1, 0, 0, false).
-		AddItem(deleteButton, 0, 1, 1, 1, 0, 0, false).
-		AddItem(updateButton, 0, 2, 1, 1, 0, 0, false).
-		AddItem(newButton, 0, 3, 1, 1, 0, 0, false)
+	buttonGrid.
+		AddItem(newButton, 0, 1, 1, 1, 0, 0, false).
+		AddItem(deleteButton, 0, 2, 1, 1, 0, 0, false).
+		AddItem(updateButton, 0, 3, 1, 1, 0, 0, false)
 
 	return buttonGrid
 

@@ -1,14 +1,16 @@
 package main
 
 import (
-	"GoSQL/internal/page"
+	"GoSQL/internal/ui/pageManager"
+	"context"
 
 	"github.com/rivo/tview"
 )
 
 func main() {
 	app := tview.NewApplication()
-	pageManager := page.InitPages()
+	context := context.Background()
+	pageManager := pageManager.InitializePages(context)
 	if err := app.SetRoot(pageManager.Main, true).SetFocus(pageManager.Main).Run(); err != nil {
 		panic(err)
 	}

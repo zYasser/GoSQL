@@ -1,14 +1,15 @@
-package page
+package views
 
 import (
 	"GoSQL/internal/components"
+	"context"
 
 	"github.com/rivo/tview"
 )
 
-func initProfilePage(currentPage int) *tview.Grid {
+func InitProfileView(currentPage int , ctx context.Context) *tview.Grid {
 	list := components.InitiateProfileList()
-	buttonGrid := components.CreateProfileFooter()
+	buttonGrid := components.CreateProfileFooter(ctx)
 
 	contentGrid := tview.NewGrid().
 		SetRows(0, 1, 1).
