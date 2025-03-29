@@ -1,16 +1,39 @@
 package components
 
-import "github.com/rivo/tview"
+import (
+	"GoSQL/internal/services"
+	"os"
 
-func InitiateProfileList() *tview.List {
-	props := []listProps{
-		{"List item 1", "Some explanatory text", 'a', nil},
-		{"List item 2", "Some explanatory text", 'b', nil},
-		{"List item 3", "Some explanatory text", 'x', nil},
-		{"List item 4", "Some explanatory text", 'd', nil},
+	"github.com/rivo/tview"
+)
+
+
+func InitiateProfileList() *tview.Flex {
+	profiles, err := services.GetProfiles()
+	main := tview.NewFlex()
+	if err != nil {
+		modal := tview.NewModal().
+			SetText(err.Error()).
+			AddButtons([]string{"Quit"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				if buttonLabel == "Quit" {
+					os.Exit(1)
+				}
+			})
+		main.AddItem(modal, 1, 1, true)
+		return main
+
 	}
+	items := []listProps{}
+	for _, value := range profiles {
+		items = append(items, listProps{
+			mainText:      value.ProfileName,
+			secondaryText: value.DatabaseName,
+		})
+	}
+	list := createList(items)
+	list.SetBorder(true).SetTitle("Choose Profile")
 
-	list := createList(props)
-	list.SetBorder(true).SetTitle("Choose Database")
-	return list
+	main.AddItem(list, 0, 1, true)
+	return main
 }

@@ -18,5 +18,5 @@ type UIConfig struct {
 	Main          *tview.Pages
 	ViewsIndexMap map[int]Page
 	CurrentPage   Page
+	App           *tview.Application
 }
-

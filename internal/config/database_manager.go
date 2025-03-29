@@ -1,30 +1,43 @@
 package config
 
 import (
-	"GoSQL/internal/constants"
+	"context"
 	"database/sql"
 	"fmt"
+
+	_ "github.com/lib/pq"
 )
 
+type DatabaseConnectionInput struct {
+	ID           string
+	ProfileName  string `json:"ProfileName"`
+	Host         string `json:"Host"`
+	Port         string `json:"Port"`
+	Username     string `json:"Username"`
+	Password     string `json:"Password"`
+	DatabaseName string `json:"DatabaseName"`
+}
+
 type DbConfig struct {
-	Database   constants.Database
 	Connection *sql.DB
 }
 
-type DatabaseConfig struct {
-	ProfileName  string
-	DatabaseType constants.Database
-	Host         string
-	Port         string
-	Username     string
-	Password     string
-	DatabaseName string
-}
+func ConnectToDb(d DatabaseConnectionInput, ctx context.Context) error {
+	url := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable",
+		d.Username, d.Password, d.Host, d.Port, d.DatabaseName)
 
-func NewDb(userInput string) (constants.Database, error) {
-	db, err := constants.MapUserInputToDatabase(userInput)
+	
+	db, err := sql.Open("postgres", url)
 	if err != nil {
-		fmt.Printf("Fail To Map input to database ")
+		return err
 	}
-	return db, nil
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return err
+	}
+	dbConfig := ctx.Value("db").(*DbConfig)
+	dbConfig.Connection = db
+
+	return nil
+
 }
