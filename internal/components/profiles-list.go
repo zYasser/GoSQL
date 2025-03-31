@@ -7,7 +7,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-
 func InitiateProfileList() *tview.Flex {
 	profiles, err := services.GetProfiles()
 	main := tview.NewFlex()
@@ -24,9 +23,9 @@ func InitiateProfileList() *tview.Flex {
 		return main
 
 	}
-	items := []listProps{}
+	items := []ListProps{}
 	for _, value := range profiles {
-		items = append(items, listProps{
+		items = append(items, ListProps{
 			mainText:      value.ProfileName,
 			secondaryText: value.DatabaseName,
 		})

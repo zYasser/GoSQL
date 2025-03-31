@@ -19,11 +19,14 @@ func InitializePages(ctx context.Context, app *tview.Application) *config.UIConf
 	ctx = context.WithValue(ctx, "db", db)
 
 	pageIndex := 0
+	queryPage := views.InitializeQueryView(ctx, pageIndex)
 	profilePageView := views.InitProfileView(pageIndex, ctx)
 	pageIndex++
 	createProfilePageView := views.InitiateCreateProfileView(ctx, pageIndex)
 	pageIndex++
-	uiConfig.Main.AddPage(string(config.ProfilePage), profilePageView, true, true)
+	uiConfig.Main.AddPage(string(config.QueryPage), queryPage, true, true)
+
+	uiConfig.Main.AddPage(string(config.ProfilePage), profilePageView, true, false)
 	uiConfig.Main.AddPage(string(config.CreateProfilePage), createProfilePageView, true, false)
 
 	uiConfig.ViewsIndexMap[0] = config.ProfilePage

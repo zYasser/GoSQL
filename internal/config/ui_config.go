@@ -10,6 +10,7 @@ const (
 	CreateProfilePage Page = "CreateProfile"
 	DbChoose          Page = "DbChoose"
 	ProfilePage       Page = "ProfilePage"
+	QueryPage         Page = "QueryPage"
 	Next              Page = "Next"
 	Previous          Page = "Previous"
 )
