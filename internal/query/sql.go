@@ -8,7 +8,7 @@ import (
 )
 
 type Table struct {
-	Schmea    string
+	Schema    string
 	TableName string
 }
 
@@ -21,10 +21,65 @@ func GetAllTables(db *sql.DB) ([]Table, error) {
 	var result []Table
 	for rows.Next() {
 		var table Table
-		if err := rows.Scan(&table.Schmea, &table.TableName); err != nil {
+		if err := rows.Scan(&table.Schema, &table.TableName); err != nil {
 			return nil, fmt.Errorf("failed to fetch tables: %v", err)
 		}
 		result = append(result, table)
 	}
+	return result, nil
+}
+func GetTableInformation(table string, db *sql.DB) ([][]string, error) {
+	// Use placeholder to prevent SQL injection
+	query := "SELECT * FROM " + table
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query table %s: %v", table, err)
+	}
+	defer rows.Close()
+
+	// Get column names
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns for table %s: %v", table, err)
+	}
+
+	// Initialize result with column names as the first row
+	result := [][]string{cols}
+
+	// Create slices for scanning
+	values := make([]interface{}, len(cols))
+	scanArgs := make([]interface{}, len(cols))
+	for i := range values {
+		scanArgs[i] = &values[i]
+	}
+
+	// Scan rows
+	for rows.Next() {
+		if err := rows.Scan(scanArgs...); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+
+		// Important: Create a new container for each row
+		row := make([]string, len(cols))
+		for i, v := range values {
+			if v == nil {
+				row[i] = "NULL"
+			} else {
+				switch v := v.(type) {
+				case []byte:
+					row[i] = string(v)
+				default:
+					row[i] = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+		result = append(result, row)
+	}
+
+	// Check for errors from iterating over rows
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %v", err)
+	}
+
 	return result, nil
 }

@@ -5,44 +5,82 @@ import (
 	"GoSQL/internal/services"
 	"context"
 	"fmt"
-	"math/rand"
 	"strconv"
-	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
+type queryView struct {
+	table         *tview.Table
+	tree          *tview.TreeView
+	queryInput    *tview.TextArea
+	detailView    *tview.TextArea
+	mainFlex      *tview.Flex
+	rightPanel    *tview.Flex
+	dataAndDetail *tview.Flex
+	uIConfig      *config.UIConfig
+	context       context.Context
+	x             int
+	y             int
+}
+
 func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 	uiConfig, _ := ctx.Value("ui-config").(*config.UIConfig)
 
-	mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	qv := &queryView{
+		uIConfig: uiConfig,
+		context:  ctx,
+	}
+
+	qv.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
 	_ = config.Test(ctx)
+
 	result, _ := services.GetTables(ctx)
-	itemList := createItemList(result)
-	mainFlex.AddItem(itemList, 0, 1, true)
+	qv.tree = qv.createItemTree(result)
+	// Wrap Tree in a container to prevent it from disappearing
+	treeContainer := tview.NewFlex().SetDirection(tview.FlexRow)
+	treeContainer.AddItem(qv.tree, 0, 1, true)
+
+	qv.mainFlex.AddItem(treeContainer, 0, 1, true)
+	qv.rightPanel = qv.createRightPanel()
+	qv.mainFlex.AddItem(qv.rightPanel, 0, 4, false)
+
 	showDatabaseList := true
-	rightPanel := createRightPanel(uiConfig)
-	mainFlex.AddItem(rightPanel, 0, 4, false)
-	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	qv.mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlS:
-			uiConfig.App.SetFocus(rightPanel)
 			if showDatabaseList {
-				mainFlex.ResizeItem(itemList, 0, 0)
+				treeContainer.RemoveItem(qv.tree)
+				qv.mainFlex.ResizeItem(treeContainer, 0, 0)
+				qv.uIConfig.App.SetFocus(qv.rightPanel)
 			} else {
-				mainFlex.ResizeItem(itemList, 0, 1)
+				treeContainer.AddItem(qv.tree, 0, 1, true)
+				qv.mainFlex.ResizeItem(treeContainer, 0, 1)
 
+				qv.uIConfig.App.SetFocus(qv.tree)
 			}
 			showDatabaseList = !showDatabaseList
-
+			return nil
 		}
 		return event
-
 	})
-	return mainFlex
+	qv.tree.SetSelectedFunc(func(node *tview.TreeNode) {
+		if len(node.GetChildren()) == 0 {
+			parent := node.GetReference().(*tview.TreeNode)
+			query := fmt.Sprintf("\"%s\".\"%s\"", parent.GetText(), node.GetText())
+			data, _ := services.FetchTableData(ctx, query)
+			qv.addDataToTable(data, qv.table)
+			uiConfig.App.SetFocus(qv.table)
+		} else {
+			node.SetExpanded(!node.IsExpanded())
+		}
+	})
+
+	return qv.mainFlex
 }
-func createItemList(rows map[string][]string) *tview.TreeView {
+
+func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
 	rootDir := "."
 	root := tview.NewTreeNode(rootDir).
 		SetColor(tcell.ColorRed)
@@ -60,11 +98,6 @@ func createItemList(rows map[string][]string) *tview.TreeView {
 		root.AddChild(node)
 	}
 
-	tree.SetSelectedFunc(func(node *tview.TreeNode) {
-		node.SetExpanded(!node.IsExpanded())
-	})
-
-	// Handle Vim-like movement
 	var numBuffer string
 
 	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -77,21 +110,16 @@ func createItemList(rows map[string][]string) *tview.TreeView {
 		case event.Key() == tcell.KeyUp:
 			if numBuffer != "" {
 				steps, _ := strconv.Atoi(numBuffer)
-
-				moveTreeView(tree, currentNode, steps, false)
+				qv.moveTreeView(tree, currentNode, steps, false)
 				numBuffer = "" // Reset buffer
-
 			}
-
 			return event
 
 		case event.Key() == tcell.KeyDown:
 			if numBuffer != "" {
 				steps, _ := strconv.Atoi(numBuffer)
-
-				moveTreeView(tree, currentNode, steps, true)
+				qv.moveTreeView(tree, currentNode, steps, true)
 				numBuffer = "" // Reset buffer
-
 			}
 			return event
 
@@ -109,16 +137,14 @@ func createItemList(rows map[string][]string) *tview.TreeView {
 			numBuffer = "" // Reset buffer
 
 			// Move up or down
-			moveTreeView(tree, currentNode, steps, event.Rune() == 'd')
+			qv.moveTreeView(tree, currentNode, steps, event.Rune() == 'd')
 			return event
 
 		case event.Rune() == rune(tcell.KeyCtrlX):
-
 			if currentNode == root {
 				return event
 			}
 			parent := currentNode.GetReference().(*tview.TreeNode)
-
 			parent.SetExpanded(!parent.IsExpanded())
 		}
 
@@ -128,7 +154,7 @@ func createItemList(rows map[string][]string) *tview.TreeView {
 	return tree
 }
 
-func moveTreeView(tree *tview.TreeView, currentNode *tview.TreeNode, steps int, moveDown bool) {
+func (qv *queryView) moveTreeView(tree *tview.TreeView, currentNode *tview.TreeNode, steps int, moveDown bool) {
 	parent := currentNode.GetReference().(*tview.TreeNode)
 	children := parent.GetChildren()
 	index := -1
@@ -159,19 +185,19 @@ func moveTreeView(tree *tview.TreeView, currentNode *tview.TreeNode, steps int, 
 	tree.SetCurrentNode(children[newIndex])
 }
 
-func createRightPanel(uiConfig *config.UIConfig) *tview.Flex {
+func (qv *queryView) createRightPanel() *tview.Flex {
 	rightPanel := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	queryInput := createQueryInput()
-	rightPanel.AddItem(queryInput, 0, 1, false)
+	qv.queryInput = qv.createQueryInput()
+	rightPanel.AddItem(qv.queryInput, 0, 1, false)
 
-	dataAndDetail := createDataAndDetail(uiConfig)
-	rightPanel.AddItem(dataAndDetail, 0, 5, true)
+	qv.dataAndDetail = qv.createDataAndDetail()
+	rightPanel.AddItem(qv.dataAndDetail, 0, 5, true)
 
 	return rightPanel
 }
 
-func createQueryInput() *tview.TextArea {
+func (qv *queryView) createQueryInput() *tview.TextArea {
 	queryInput := tview.NewTextArea()
 	queryInput.SetPlaceholder("Enter SQL query here...").
 		SetTitle("SQL Query").SetBorder(true)
@@ -179,83 +205,64 @@ func createQueryInput() *tview.TextArea {
 	return queryInput
 }
 
-func createDataAndDetail(uiConfig *config.UIConfig) *tview.Flex {
+func (qv *queryView) createDataAndDetail() *tview.Flex {
 	dataAndDetail := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	dataTable := createDataTable(uiConfig)
-	dataAndDetail.AddItem(dataTable, 0, 2, true)
+	qv.table = qv.createDataTable()
+	dataAndDetail.AddItem(qv.table, 0, 2, true)
 
-	detailView := createDetailView(dataTable)
-	dataAndDetail.AddItem(detailView, 0, 1, false)
+	qv.detailView = qv.createDetailView()
+	dataAndDetail.AddItem(qv.detailView, 0, 1, false)
 
 	return dataAndDetail
 }
 
-func createDataTable(uiConfig *config.UIConfig) *tview.Table {
-	dataTable := tview.NewTable().SetBorders(true).SetSelectable(true, false)
+func (qv *queryView) createDataTable() *tview.Table {
+	dataTable := tview.NewTable().SetBorders(true).SetSelectable(true, true)
 	dataTable.SetTitle("Data").SetBorder(true)
-
-	for row := 0; row < 25; row++ {
-		for col := 0; col < 5; col++ {
-			text := randomText()
-			cell := tview.NewTableCell(text).
-				SetTextColor(tcell.ColorWhite).
-				SetMaxWidth(40).
-				SetAlign(tview.AlignLeft)
-
-			if row == 0 {
-				cell = cell.SetAttributes(tcell.AttrBold)
-			}
-
-			dataTable.SetCell(row, col, cell)
-		}
-	}
-	dataTable.SetFixed(1, 0)
-
-	dataTable.SetSelectionChangedFunc(func(row int, column int) {
-		selectedCell := dataTable.GetCell(row, column)
-		fmt.Printf("Selected cell text: %s\n", selectedCell.Text)
-	})
-
-	dataTable.SetSelectedFunc(func(row, column int) {
-		uiConfig.App.SetFocus(dataTable)
-	})
 
 	return dataTable
 }
 
-func createDetailView(dataTable *tview.Table) *tview.TextArea {
+func (qv *queryView) addDataToTable(data [][]string, table *tview.Table) {
+	table.Clear()
+
+	for i, values := range data {
+		for j, row := range values {
+			cell := tview.NewTableCell(row).
+				SetTextColor(tcell.ColorWhite).
+				SetMaxWidth(40).
+				SetAlign(tview.AlignLeft)
+			table.SetCell(i, j, cell)
+		}
+	}
+	table.SetFixed(1, 0)
+}
+
+func (qv *queryView) createDetailView() *tview.TextArea {
 	detailView := tview.NewTextArea().
 		SetPlaceholder("Details of selected data...")
 	detailView.SetTitle("Title").SetBorder(true)
 	detailView.SetBorderColor(tcell.ColorDarkRed)
 
-	x, y := 0, 0
-	dataTable.SetSelectionChangedFunc(func(row int, column int) {
-		cell := dataTable.GetCell(x, y)
+	qv.table.SetSelectionChangedFunc(func(row int, column int) {
+		cellColumnName := qv.table.GetCell(0, column)
+		cell := qv.table.GetCell(qv.x, qv.y)
 		if cell != nil {
-			dataTable.GetCell(x, y).SetBackgroundColor(tcell.ColorDefault)
+			qv.table.GetCell(qv.x, qv.y).SetBackgroundColor(tcell.ColorDefault)
 		}
-		dataTable.GetCell(row, column).SetBackgroundColor(tcell.ColorGray)
-		x, y = row, column
-		cell = dataTable.GetCell(row, column)
+		qv.table.GetCell(row, column).SetBackgroundColor(tcell.ColorGray)
+		qv.x, qv.y = row, column
+		cell = qv.table.GetCell(row, column)
 		if cell != nil {
-			detailView.SetText(cell.Text, true)
+			if(row!=0){
+				detailView.SetText(fmt.Sprintf("%s:\n%s", cellColumnName.Text, cell.Text), true)
+
+			}else{
+				detailView.SetText(cell.Text, true)
+
+			}
 		}
 	})
 	return detailView
-}
-
-func randomText() string {
-	texts := []string{
-		"Short",
-		"Medium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length textMedium length text",
-		"Tiny",
-		"Somewhat longer text",
-	}
-	return texts[rand.Intn(len(texts))]
-}
-
-func repeatText(text string, n int) string {
-	return strings.Repeat(text+" ", n)
 }
