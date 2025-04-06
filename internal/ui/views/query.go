@@ -11,18 +11,29 @@ import (
 	"github.com/rivo/tview"
 )
 
+const (
+	Result  = "Result"
+	Error   = "Error"
+	Loading = "Loading"
+)
+
 type queryView struct {
-	table         *tview.Table
-	tree          *tview.TreeView
-	queryInput    *tview.TextArea
-	detailView    *tview.TextArea
-	mainFlex      *tview.Flex
-	rightPanel    *tview.Flex
-	dataAndDetail *tview.Flex
-	uIConfig      *config.UIConfig
-	context       context.Context
-	x             int
-	y             int
+	app             *tview.Application
+	table           *tview.Table
+	tree            *tview.TreeView
+	queryInput      *tview.TextArea
+	detailView      *tview.TextArea
+	mainFlex        *tview.Flex
+	rightPanel      *tview.Flex
+	dataAndDetail   *tview.Flex
+	resultContainer *tview.Flex
+	statusModal     *tview.TextView
+	uIConfig        *config.UIConfig
+	context         context.Context
+	x               int
+	y               int
+	// Track whether status modal is currently displayed
+	isStatusModalDisplayed bool
 }
 
 func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
@@ -31,14 +42,19 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 	qv := &queryView{
 		uIConfig: uiConfig,
 		context:  ctx,
+		app:      uiConfig.App,
+	}
+	err := config.Test(ctx)
+	qv.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
+
+	qv.statusModal = qv.createStatusModal()
+
+	result, err := services.GetTables(ctx)
+	if err != nil {
+		qv.showStatus("Error", fmt.Sprintf("Failed to get tables: %v", err))
 	}
 
-	qv.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
-	_ = config.Test(ctx)
-
-	result, _ := services.GetTables(ctx)
 	qv.tree = qv.createItemTree(result)
-	// Wrap Tree in a container to prevent it from disappearing
 	treeContainer := tview.NewFlex().SetDirection(tview.FlexRow)
 	treeContainer.AddItem(qv.tree, 0, 1, true)
 
@@ -69,15 +85,81 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 		if len(node.GetChildren()) == 0 {
 			parent := node.GetReference().(*tview.TreeNode)
 			query := fmt.Sprintf("\"%s\".\"%s\"", parent.GetText(), node.GetText())
-			data, _ := services.FetchTableData(ctx, query)
-			qv.addDataToTable(data, qv.table)
-			uiConfig.App.SetFocus(qv.table)
+
+			// Show loading status
+			qv.showStatus("Loading", "Loading table data...")
+
+			data, err := services.FetchTableData(ctx, query)
+			if err != nil {
+				qv.showStatus("Error", fmt.Sprintf("Failed to fetch table data: %v", err))
+			} else {
+				// Only add data if there was no error
+				qv.hideStatus()
+				qv.addDataToTable(data, qv.table)
+				uiConfig.App.SetFocus(qv.table)
+			}
 		} else {
 			node.SetExpanded(!node.IsExpanded())
 		}
 	})
-
+	qv.switchComponents()
 	return qv.mainFlex
+}
+
+func (qv *queryView) showStatus(statusType string, message string) {
+	qv.statusModal.SetTitle(statusType)
+	qv.statusModal.SetText(message)
+
+	// Set color based on status type
+	if statusType == "Error" {
+		qv.statusModal.SetTextColor(tcell.ColorRed)
+		qv.statusModal.SetBorderColor(tcell.ColorRed)
+
+	} else if statusType == "Result" {
+		qv.statusModal.SetTextColor(tcell.ColorDefault)
+		qv.statusModal.SetBorderColor(tcell.ColorGreen)
+	} else {
+		qv.statusModal.SetTextColor(tcell.ColorWhite)
+		qv.statusModal.SetBorderColor(tcell.ColorYellow)
+	}
+	if !qv.isStatusModalDisplayed {
+		qv.resultContainer.RemoveItem(qv.table)
+		qv.resultContainer.AddItem(qv.statusModal, 0, 2, true)
+	}
+	qv.isStatusModalDisplayed = true
+}
+
+func (qv *queryView) hideStatus() {
+	if !qv.isStatusModalDisplayed {
+		return
+	}
+	qv.resultContainer.RemoveItem(qv.statusModal)
+	qv.resultContainer.AddItem(qv.table, 0, 2, true)
+
+	qv.app.SetFocus(qv.queryInput)
+
+	qv.isStatusModalDisplayed = false
+}
+
+func (qv *queryView) switchComponents() {
+	qv.mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlT:
+			qv.app.SetFocus(qv.tree)
+		case tcell.KeyCtrlU:
+			qv.app.SetFocus(qv.queryInput)
+		case tcell.KeyCtrlE:
+			if !qv.isStatusModalDisplayed {
+				qv.app.SetFocus(qv.table)
+			}
+		case tcell.KeyEscape:
+			if qv.isStatusModalDisplayed {
+				qv.hideStatus()
+				return nil
+			}
+		}
+		return event
+	})
 }
 
 func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
@@ -202,16 +284,39 @@ func (qv *queryView) createQueryInput() *tview.TextArea {
 	queryInput.SetPlaceholder("Enter SQL query here...").
 		SetTitle("SQL Query").SetBorder(true)
 
+	queryInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlA {
+			query := queryInput.GetText()
+
+			qv.showStatus("Loading", "Executing query...")
+
+			data, message, err := services.ExecuteQuery(qv.context, query)
+			if err != nil {
+				qv.showStatus(Error, fmt.Sprintf("Query error: %v", err))
+			} else if len(message) != 0 {
+				qv.showStatus(Result, message)
+
+			} else {
+				qv.hideStatus()
+				qv.addDataToTable(data, qv.table)
+				qv.app.SetFocus(qv.table)
+			}
+			return nil
+		}
+		return event
+	})
+
 	return queryInput
 }
 
 func (qv *queryView) createDataAndDetail() *tview.Flex {
 	dataAndDetail := tview.NewFlex().SetDirection(tview.FlexColumn)
-
 	qv.table = qv.createDataTable()
-	dataAndDetail.AddItem(qv.table, 0, 2, true)
 
+	qv.resultContainer = tview.NewFlex()
+	qv.resultContainer.AddItem(qv.table, 0, 2, true)
 	qv.detailView = qv.createDetailView()
+	dataAndDetail.AddItem(qv.resultContainer, 0, 2, false)
 	dataAndDetail.AddItem(qv.detailView, 0, 1, false)
 
 	return dataAndDetail
@@ -242,10 +347,14 @@ func (qv *queryView) addDataToTable(data [][]string, table *tview.Table) {
 func (qv *queryView) createDetailView() *tview.TextArea {
 	detailView := tview.NewTextArea().
 		SetPlaceholder("Details of selected data...")
-	detailView.SetTitle("Title").SetBorder(true)
+	detailView.SetTitle("Details").SetBorder(true)
 	detailView.SetBorderColor(tcell.ColorDarkRed)
 
 	qv.table.SetSelectionChangedFunc(func(row int, column int) {
+		if qv.isStatusModalDisplayed {
+			return
+		}
+
 		cellColumnName := qv.table.GetCell(0, column)
 		cell := qv.table.GetCell(qv.x, qv.y)
 		if cell != nil {
@@ -255,14 +364,18 @@ func (qv *queryView) createDetailView() *tview.TextArea {
 		qv.x, qv.y = row, column
 		cell = qv.table.GetCell(row, column)
 		if cell != nil {
-			if(row!=0){
+			if row != 0 {
 				detailView.SetText(fmt.Sprintf("%s:\n%s", cellColumnName.Text, cell.Text), true)
-
-			}else{
+			} else {
 				detailView.SetText(cell.Text, true)
-
 			}
 		}
 	})
 	return detailView
+}
+
+func (qv *queryView) createStatusModal() *tview.TextView {
+	statusModal := tview.NewTextView()
+	statusModal.SetBorder(true)
+	return statusModal
 }

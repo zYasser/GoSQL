@@ -29,3 +29,13 @@ func FetchTableData(ctx context.Context, tableName string) ([][]string, error) {
 	return result, nil
 
 }
+
+func ExecuteQuery(ctx context.Context, queryString string) ([][]string, string, error) {
+	db := ctx.Value("db").(*config.DbConfig)
+	result, message, err := query.ExecuteQuery(db.Connection, queryString)
+	if err != nil {
+		return nil, "", err
+	}
+	return result, message, nil
+
+}

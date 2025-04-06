@@ -3,6 +3,7 @@ package query
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -15,45 +16,63 @@ type Table struct {
 func GetAllTables(db *sql.DB) ([]Table, error) {
 	rows, err := db.Query("select table_schema , table_name from information_schema.tables where table_schema not in ('pg_catalog' ,'information_schema' )")
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tables: %v", err)
+		return nil, err
 	}
 	defer rows.Close()
 	var result []Table
 	for rows.Next() {
 		var table Table
 		if err := rows.Scan(&table.Schema, &table.TableName); err != nil {
-			return nil, fmt.Errorf("failed to fetch tables: %v", err)
+			return nil, err
 		}
 		result = append(result, table)
 	}
 	return result, nil
 }
-func GetTableInformation(table string, db *sql.DB) ([][]string, error) {
-	// Use placeholder to prevent SQL injection
-	query := "SELECT * FROM " + table
-	rows, err := db.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query table %s: %v", table, err)
-	}
-	defer rows.Close()
 
+func ExecuteQuery(db *sql.DB, query string) ([][]string, string, error) {
+	trimmed := strings.TrimSpace(query)
+	upper := strings.ToUpper(trimmed)
+
+	switch {
+	case strings.HasPrefix(upper, "INSERT"),
+		strings.HasPrefix(upper, "UPDATE"),
+		strings.HasPrefix(upper, "DELETE"):
+		result, err := db.Exec(query)
+		if err != nil {
+			return nil, "", err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return nil, "", err
+		}
+		return nil, fmt.Sprintf("%d affected rows", rowsAffected), nil
+
+	default:
+		rows, err := db.Query(query)
+		if err != nil {
+			return nil, "", err
+		}
+		defer rows.Close()
+		result, err := getResult(rows)
+		return result, "", err
+	}
+}
+func getResult(rows *sql.Rows) ([][]string, error) {
 	// Get column names
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get columns for table %s: %v", table, err)
+		return nil, err
 	}
 
-	// Initialize result with column names as the first row
 	result := [][]string{cols}
 
-	// Create slices for scanning
 	values := make([]interface{}, len(cols))
 	scanArgs := make([]interface{}, len(cols))
 	for i := range values {
 		scanArgs[i] = &values[i]
 	}
 
-	// Scan rows
 	for rows.Next() {
 		if err := rows.Scan(scanArgs...); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %v", err)
@@ -82,4 +101,16 @@ func GetTableInformation(table string, db *sql.DB) ([][]string, error) {
 	}
 
 	return result, nil
+
+}
+func GetTableInformation(table string, db *sql.DB) ([][]string, error) {
+	// Use placeholder to prevent SQL injection
+	query := "SELECT * FROM " + table
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query table %s: %v", table, err)
+	}
+	defer rows.Close()
+	return getResult(rows)
+
 }
