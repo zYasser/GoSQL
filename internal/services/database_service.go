@@ -4,7 +4,14 @@ import (
 	"GoSQL/internal/config"
 	"GoSQL/internal/query"
 	"context"
+	"fmt"
+	"strings"
 )
+
+type UpdateQueryParams struct {
+	Key    string
+	Values map[string]string
+}
 
 func GetTables(ctx context.Context) (map[string][]string, error) {
 	db := ctx.Value("db").(*config.DbConfig)
@@ -20,22 +27,72 @@ func GetTables(ctx context.Context) (map[string][]string, error) {
 
 }
 
-func FetchTableData(ctx context.Context, tableName string) ([][]string, error) {
+func GenerateSQL(updates []UpdateQueryParams, pk string, table string, ctx context.Context) error {
 	db := ctx.Value("db").(*config.DbConfig)
-	result, err := query.GetTableInformation(tableName, db.Connection)
+	tx, err := db.Connection.Begin()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return result, nil
+
+	for _, update := range updates {
+		setParts := []string{}
+		for col, val := range update.Values {
+			setParts = append(setParts, fmt.Sprintf(`"%s" = '%s'`, col, val))
+		}
+		queryString := fmt.Sprintf(`UPDATE "%s" SET %s WHERE "%s" = '%s';`,
+			table,
+			strings.Join(setParts, ", "),
+			pk,
+			update.Key,
+		)
+		_, _, err := query.ExecuteQuery(tx, queryString)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+	}
+	err = tx.Commit()
+	if err != nil {
+		return err
+
+	}
+	tx.Commit()
+	return nil
+
+}
+
+func FetchTableData(ctx context.Context, tableName string) ([][]string, string, error) {
+	db := ctx.Value("db").(*config.DbConfig)
+	result, pk, err := query.GetTableInformation(tableName, db.Connection)
+	if err != nil {
+		return nil, "", err
+	}
+	return result, pk, nil
 
 }
 
 func ExecuteQuery(ctx context.Context, queryString string) ([][]string, string, error) {
+
 	db := ctx.Value("db").(*config.DbConfig)
-	result, message, err := query.ExecuteQuery(db.Connection, queryString)
+	tx, err := db.Connection.Begin()
 	if err != nil {
 		return nil, "", err
+
 	}
+
+	result, message, err := query.ExecuteQuery(tx, queryString)
+	if err != nil {
+		tx.Rollback()
+
+		return nil, "", err
+	}
+	err = tx.Commit()
+	if err != nil {
+		return nil, "", err
+
+	}
+
 	return result, message, nil
 
 }

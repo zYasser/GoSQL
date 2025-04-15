@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -18,22 +19,26 @@ const (
 )
 
 type queryView struct {
-	app             *tview.Application
-	table           *tview.Table
-	tree            *tview.TreeView
-	queryInput      *tview.TextArea
-	detailView      *tview.TextArea
-	mainFlex        *tview.Flex
-	rightPanel      *tview.Flex
-	dataAndDetail   *tview.Flex
-	resultContainer *tview.Flex
-	statusModal     *tview.TextView
-	uIConfig        *config.UIConfig
-	context         context.Context
-	x               int
-	y               int
-	// Track whether status modal is currently displayed
+	app                    *tview.Application
+	table                  *tview.Table
+	tree                   *tview.TreeView
+	queryInput             *tview.TextArea
+	detailView             *tview.TextArea
+	mainFlex               *tview.Flex
+	rightPanel             *tview.Flex
+	dataAndDetail          *tview.Flex
+	resultContainer        *tview.Flex
+	statusModal            *tview.TextView
+	uIConfig               *config.UIConfig
+	context                context.Context
+	x                      int
+	y                      int
 	isStatusModalDisplayed bool
+	data                   [][]string
+	newData                [][]bool
+	pk                     string
+	pkIndex                int
+	tableName              string
 }
 
 func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
@@ -65,7 +70,7 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 	showDatabaseList := true
 	qv.mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyCtrlS:
+		case tcell.KeyCtrlD:
 			if showDatabaseList {
 				treeContainer.RemoveItem(qv.tree)
 				qv.mainFlex.ResizeItem(treeContainer, 0, 0)
@@ -86,14 +91,23 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 			parent := node.GetReference().(*tview.TreeNode)
 			query := fmt.Sprintf("\"%s\".\"%s\"", parent.GetText(), node.GetText())
 
-			// Show loading status
 			qv.showStatus("Loading", "Loading table data...")
 
-			data, err := services.FetchTableData(ctx, query)
+			data, pk, err := services.FetchTableData(ctx, query)
+
 			if err != nil {
 				qv.showStatus("Error", fmt.Sprintf("Failed to fetch table data: %v", err))
 			} else {
-				// Only add data if there was no error
+				qv.tableName = node.GetText()
+				qv.pk = pk
+				qv.data = data
+
+				qv.pkIndex = qv.getPrimaryKeyIndex()
+				qv.x, qv.y = 0, 0
+				qv.newData = make([][]bool, len(data))
+				for i := range qv.newData {
+					qv.newData[i] = make([]bool, len(data[i]))
+				}
 				qv.hideStatus()
 				qv.addDataToTable(data, qv.table)
 				uiConfig.App.SetFocus(qv.table)
@@ -102,6 +116,14 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 			node.SetExpanded(!node.IsExpanded())
 		}
 	})
+	qv.statusModal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEnter:
+			qv.hideStatus()
+		}
+		return nil
+	})
+
 	qv.switchComponents()
 	return qv.mainFlex
 }
@@ -126,6 +148,7 @@ func (qv *queryView) showStatus(statusType string, message string) {
 		qv.resultContainer.RemoveItem(qv.table)
 		qv.resultContainer.AddItem(qv.statusModal, 0, 2, true)
 	}
+	qv.app.SetFocus(qv.statusModal)
 	qv.isStatusModalDisplayed = true
 }
 
@@ -146,12 +169,15 @@ func (qv *queryView) switchComponents() {
 		switch event.Key() {
 		case tcell.KeyCtrlT:
 			qv.app.SetFocus(qv.tree)
-		case tcell.KeyCtrlU:
+		case tcell.KeyCtrlK:
 			qv.app.SetFocus(qv.queryInput)
-		case tcell.KeyCtrlE:
+		case tcell.KeyCtrlU:
 			if !qv.isStatusModalDisplayed {
 				qv.app.SetFocus(qv.table)
 			}
+		case tcell.KeyCtrlW:
+			qv.app.SetFocus(qv.detailView)
+
 		case tcell.KeyEscape:
 			if qv.isStatusModalDisplayed {
 				qv.hideStatus()
@@ -193,7 +219,7 @@ func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
 			if numBuffer != "" {
 				steps, _ := strconv.Atoi(numBuffer)
 				qv.moveTreeView(tree, currentNode, steps, false)
-				numBuffer = "" // Reset buffer
+				numBuffer = ""
 			}
 			return event
 
@@ -201,24 +227,21 @@ func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
 			if numBuffer != "" {
 				steps, _ := strconv.Atoi(numBuffer)
 				qv.moveTreeView(tree, currentNode, steps, true)
-				numBuffer = "" // Reset buffer
+				numBuffer = ""
 			}
 			return event
 
 		case event.Rune() >= '1' && event.Rune() <= '9':
-			// Capture number input
 			numBuffer += string(event.Rune())
 			return event
 
 		case event.Rune() == 'd' || event.Rune() == 'u':
-			// Convert captured number
 			if numBuffer == "" {
 				numBuffer = "1"
 			}
 			steps, _ := strconv.Atoi(numBuffer)
-			numBuffer = "" // Reset buffer
+			numBuffer = ""
 
-			// Move up or down
 			qv.moveTreeView(tree, currentNode, steps, event.Rune() == 'd')
 			return event
 
@@ -325,7 +348,16 @@ func (qv *queryView) createDataAndDetail() *tview.Flex {
 func (qv *queryView) createDataTable() *tview.Table {
 	dataTable := tview.NewTable().SetBorders(true).SetSelectable(true, true)
 	dataTable.SetTitle("Data").SetBorder(true)
+	dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlR:
+			qv.undoDataChange()
+		case tcell.KeyCtrlS:
+			qv.submitDataChange()
+		}
+		return event
 
+	})
 	return dataTable
 }
 
@@ -345,10 +377,14 @@ func (qv *queryView) addDataToTable(data [][]string, table *tview.Table) {
 }
 
 func (qv *queryView) createDetailView() *tview.TextArea {
+
 	detailView := tview.NewTextArea().
 		SetPlaceholder("Details of selected data...")
 	detailView.SetTitle("Details").SetBorder(true)
 	detailView.SetBorderColor(tcell.ColorDarkRed)
+	detailView.SetFocusFunc(func() {
+		detailView.SetText(detailView.GetText(), true)
+	})
 
 	qv.table.SetSelectionChangedFunc(func(row int, column int) {
 		if qv.isStatusModalDisplayed {
@@ -365,17 +401,104 @@ func (qv *queryView) createDetailView() *tview.TextArea {
 		cell = qv.table.GetCell(row, column)
 		if cell != nil {
 			if row != 0 {
-				detailView.SetText(fmt.Sprintf("%s:\n%s", cellColumnName.Text, cell.Text), true)
+				detailView.SetText(cell.Text, true)
+
+				detailView.SetTitle(cellColumnName.Text)
+
 			} else {
 				detailView.SetText(cell.Text, true)
 			}
 		}
 	})
+	detailView.SetChangedFunc(func() {
+
+		currentCell := qv.table.GetCell(qv.x, qv.y)
+		style := tcell.StyleDefault.Foreground(tcell.ColorYellow)
+		currentText := detailView.GetText()
+		if currentCell.Text != currentText {
+			currentCell.SetStyle(style)
+			currentCell.SetText(currentText)
+			qv.newData[qv.x][qv.y] = true
+
+		}
+
+	})
+	detailView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlR:
+			qv.undoDataChange()
+		case tcell.KeyCtrlS:
+			qv.submitDataChange()
+
+		}
+
+		return event
+
+	})
 	return detailView
+}
+
+func (qv *queryView) undoDataChange() {
+	currentCell := qv.table.GetCell(qv.x, qv.y)
+	style := qv.table.GetCell(0, 0).Style
+	qv.detailView.SetText(qv.data[qv.x][qv.y], true)
+	currentCell.SetStyle(style)
+	qv.newData[qv.x][qv.y] = false
+}
+
+func (qv *queryView) submitDataChange() {
+	updateMap := make(map[string]map[string]string) // pkVal -> {col: newVal}
+
+	for i := range qv.newData {
+		for j := range qv.newData[i] {
+			if qv.newData[i][j] {
+				col := strings.Split(qv.table.GetCell(0, j).Text, ":")[0]
+				val := qv.table.GetCell(i, j).Text
+				pkVal := qv.table.GetCell(i, qv.pkIndex).Text
+
+				if _, ok := updateMap[pkVal]; !ok {
+					updateMap[pkVal] = make(map[string]string)
+				}
+				updateMap[pkVal][col] = val
+			}
+		}
+	}
+
+	if len(updateMap) == 0 {
+		qv.showStatus("Info", "No changes to submit")
+		return
+	}
+
+	updates := make([]services.UpdateQueryParams, 0, len(updateMap))
+	for pkVal, values := range updateMap {
+		updates = append(updates, services.UpdateQueryParams{
+			Key:    pkVal,
+			Values: values,
+		})
+	}
+
+	err := services.GenerateSQL(updates, qv.pk, qv.tableName, qv.context)
+	if err != nil {
+		qv.showStatus("Error", err.Error())
+
+	}
+}
+func (qv *queryView) getPrimaryKeyIndex() int {
+	if len(qv.data) == 0 || len(qv.data[0]) == 0 {
+		return -1 // no data or headers
+	}
+
+	for i, column := range qv.data[0] {
+		if strings.Split(column, ":")[0] == qv.pk {
+			return i
+		}
+	}
+	return -1
 }
 
 func (qv *queryView) createStatusModal() *tview.TextView {
 	statusModal := tview.NewTextView()
 	statusModal.SetBorder(true)
+
 	return statusModal
 }
