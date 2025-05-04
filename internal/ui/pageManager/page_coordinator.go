@@ -11,7 +11,7 @@ import (
 func InitializePages(ctx context.Context, app *tview.Application) *config.UIConfig {
 	uiConfig := &config.UIConfig{
 		Main:          tview.NewPages(),
-		ViewsIndexMap: make(map[int]config.Page),
+		ViewsIndexMap: make(map[int]config.PageConfig),
 		App:           app,
 	}
 	db := &config.DbConfig{}
@@ -19,18 +19,30 @@ func InitializePages(ctx context.Context, app *tview.Application) *config.UIConf
 	ctx = context.WithValue(ctx, "db", db)
 
 	pageIndex := 0
-	queryPage := views.InitializeQueryView(ctx, pageIndex)
+	// queryPage := views.InitializeQueryView(ctx, pageIndex)
 	profilePageView := views.InitProfileView(pageIndex, ctx)
 	pageIndex++
 	createProfilePageView := views.InitiateCreateProfileView(ctx, pageIndex)
 	pageIndex++
-	uiConfig.Main.AddPage(string(config.QueryPage), queryPage, true, true)
+	queryPage, queryfunc := views.NewQueryViewPage(ctx, pageIndex)
+	pageIndex++
 
-	uiConfig.Main.AddPage(string(config.ProfilePage), profilePageView, true, false)
+	uiConfig.Main.AddPage(string(config.ProfilePage), profilePageView.MainGrid, true, true)
 	uiConfig.Main.AddPage(string(config.CreateProfilePage), createProfilePageView, true, false)
+	uiConfig.Main.AddPage(string(config.QueryPage), queryPage, true, false)
 
-	uiConfig.ViewsIndexMap[0] = config.ProfilePage
-	uiConfig.ViewsIndexMap[1] = config.CreateProfilePage
+	uiConfig.ViewsIndexMap[0] = config.PageConfig{
+		Page:     string(config.ProfilePage),
+		PageFunc: func() {},
+	}
+	uiConfig.ViewsIndexMap[1] = config.PageConfig{
+		Page:     string(config.CreateProfilePage),
+		PageFunc: func() {},
+	}
+	uiConfig.ViewsIndexMap[2] = config.PageConfig{
+		Page:     string(config.QueryPage),
+		PageFunc: queryfunc,
+	}
 
 	return uiConfig
 }

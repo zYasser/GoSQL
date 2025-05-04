@@ -32,7 +32,6 @@ func CreateProfileFooter(ctx context.Context, mainGrid *tview.Grid) *tview.Grid 
 		AddItem(deleteButton, 0, 1, 1, 1, 1, 1, true).
 		AddItem(updateButton, 0, 2, 1, 1, 1, 1, true)
 
-	// Set keyboard shortcuts in mainGrid
 	mainGrid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
 		case 'n':

@@ -15,7 +15,15 @@ func NavigatePage(page config.Page, currentPageIndex int, ctx context.Context) {
 	} else if page == config.Previous {
 		newPageIndex = currentPageIndex - 1
 	} else {
-		switchToPageView(string(page), uiConfig)
+		var newPage config.PageConfig
+		for _, v := range uiConfig.ViewsIndexMap {
+			if v.Page == string(page) {
+				newPage = v
+				break
+			}
+
+		}
+		switchToPageView(newPage, uiConfig)
 		return
 	}
 
@@ -25,9 +33,11 @@ func NavigatePage(page config.Page, currentPageIndex int, ctx context.Context) {
 		return
 	}
 
-	switchToPageView(string(newPage), uiConfig)
+	switchToPageView(newPage, uiConfig)
 }
 
-func switchToPageView(page string, config *config.UIConfig) {
-	config.Main.SwitchToPage(page)
+func switchToPageView(page config.PageConfig, config *config.UIConfig) {
+	config.Main.SwitchToPage(page.Page)
+	page.PageFunc()
+
 }

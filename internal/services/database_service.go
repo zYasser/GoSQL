@@ -15,6 +15,9 @@ type UpdateQueryParams struct {
 
 func GetTables(ctx context.Context) (map[string][]string, error) {
 	db := ctx.Value("db").(*config.DbConfig)
+	if db == nil {
+		return nil, fmt.Errorf("make sure to chose database profile")
+	}
 	result, err := query.GetAllTables(db.Connection)
 	if err != nil {
 		return nil, err

@@ -41,7 +41,7 @@ type queryView struct {
 	tableName              string
 }
 
-func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
+func initializeQueryView(ctx context.Context, pageIdx int) *queryView {
 	uiConfig, _ := ctx.Value("ui-config").(*config.UIConfig)
 
 	qv := &queryView{
@@ -49,17 +49,12 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 		context:  ctx,
 		app:      uiConfig.App,
 	}
-	err := config.Test(ctx)
 	qv.mainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	qv.statusModal = qv.createStatusModal()
 
-	result, err := services.GetTables(ctx)
-	if err != nil {
-		qv.showStatus("Error", fmt.Sprintf("Failed to get tables: %v", err))
-	}
-
-	qv.tree = qv.createItemTree(result)
+	// Initialize UI components without data
+	qv.tree = qv.createItemTree(nil)
 	treeContainer := tview.NewFlex().SetDirection(tview.FlexRow)
 	treeContainer.AddItem(qv.tree, 0, 1, true)
 
@@ -125,9 +120,43 @@ func InitializeQueryView(ctx context.Context, pageIdx int) *tview.Flex {
 	})
 
 	qv.switchComponents()
-	return qv.mainFlex
+
+	return qv
 }
 
+func (qv *queryView) LoadDatabaseData() {
+	qv.showStatus("Loading", "Loading database tables...")
+
+	result, err := services.GetTables(qv.context)
+	if err != nil {
+		qv.showStatus("Error", fmt.Sprintf("Failed to get tables: %v", err))
+		return
+	}
+
+	// Update the tree with the retrieved data
+	root := qv.tree.GetRoot()
+	root.ClearChildren()
+
+	for schema, tables := range result {
+		node := tview.NewTreeNode(schema).SetSelectable(true).SetColor(tcell.ColorDarkGreen).SetReference(root)
+		for _, table := range tables {
+			child := tview.NewTreeNode(table).SetColor(tcell.ColorBlue).SetReference(node)
+			node.AddChild(child)
+		}
+		root.AddChild(node)
+	}
+
+	qv.hideStatus()
+	qv.app.SetFocus(qv.tree)
+}
+func NewQueryViewPage(ctx context.Context, pageIdx int) (*tview.Flex, func()) {
+	qv := initializeQueryView(ctx, pageIdx)
+
+	// Return both the view and a function to load data
+	return qv.mainFlex, func() {
+		qv.LoadDatabaseData()
+	}
+}
 func (qv *queryView) showStatus(statusType string, message string) {
 	qv.statusModal.SetTitle(statusType)
 	qv.statusModal.SetText(message)
@@ -197,13 +226,16 @@ func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
 		SetCurrentNode(root)
 	root.SetReference(root)
 
-	for schema, tables := range rows {
-		node := tview.NewTreeNode(schema).SetSelectable(true).SetColor(tcell.ColorDarkGreen).SetReference(root)
-		for _, table := range tables {
-			child := tview.NewTreeNode(table).SetColor(tcell.ColorBlue).SetReference(node)
-			node.AddChild(child)
+	// Only populate tree if data is provided
+	if rows != nil {
+		for schema, tables := range rows {
+			node := tview.NewTreeNode(schema).SetSelectable(true).SetColor(tcell.ColorDarkGreen).SetReference(root)
+			for _, table := range tables {
+				child := tview.NewTreeNode(table).SetColor(tcell.ColorBlue).SetReference(node)
+				node.AddChild(child)
+			}
+			root.AddChild(node)
 		}
-		root.AddChild(node)
 	}
 
 	var numBuffer string

@@ -17,7 +17,11 @@ const (
 
 type UIConfig struct {
 	Main          *tview.Pages
-	ViewsIndexMap map[int]Page
+	ViewsIndexMap map[int]PageConfig
 	CurrentPage   Page
 	App           *tview.Application
+}
+type PageConfig struct {
+	Page     string
+	PageFunc func()
 }
