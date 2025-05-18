@@ -10,18 +10,21 @@ import (
 	"github.com/rivo/tview"
 )
 
-func CreateProfileFooter(ctx context.Context, mainGrid *tview.Grid) *tview.Grid {
+type ProfileFooterUI struct {
+	MainGrid     *tview.Grid
+	UpdateButton *tview.Button
+	NewButton    *tview.Button
+}
+
+func CreateProfileFooter(ctx context.Context, mainGrid *tview.Grid) *ProfileFooterUI {
 	buttonGrid := tview.NewGrid().
 		SetRows(1)
 
-	deleteButton := tview.NewButton("Delete").SetSelectedFunc(func() {
-		println("Delete action triggered")
-	})
 	updateButton := tview.NewButton("Update").SetSelectedFunc(func() {
-		println("Update action triggered")
+
 	})
 	newButton := tview.NewButton("New").SetSelectedFunc(func() {
-		router.NavigatePage(config.CreateProfilePage, -1, ctx)
+		router.NavigatePage(config.CreateProfilePage, -1, ctx, "")
 	})
 	uiConfig, ok := ctx.Value("ui-config").(*config.UIConfig)
 	if !ok {
@@ -29,20 +32,22 @@ func CreateProfileFooter(ctx context.Context, mainGrid *tview.Grid) *tview.Grid 
 	}
 	buttonGrid.
 		AddItem(newButton, 0, 0, 1, 1, 1, 1, true).
-		AddItem(deleteButton, 0, 1, 1, 1, 1, 1, true).
-		AddItem(updateButton, 0, 2, 1, 1, 1, 1, true)
+		AddItem(updateButton, 0, 1, 1, 1, 1, 1, true)
 
 	mainGrid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
 		case 'n':
 			uiConfig.App.SetFocus(newButton)
-		case 'l':
+		case 'u':
 			uiConfig.App.SetFocus(updateButton)
-		case 'm':
-			uiConfig.App.SetFocus(deleteButton)
+
 		}
 		return event
 	})
-	return buttonGrid
+	return &ProfileFooterUI{
+		MainGrid:     buttonGrid,
+		UpdateButton: updateButton,
+		NewButton:    newButton,
+	}
 
 }

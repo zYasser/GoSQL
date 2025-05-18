@@ -23,5 +23,5 @@ type UIConfig struct {
 }
 type PageConfig struct {
 	Page     string
-	PageFunc func()
+	PageFunc func(...interface{})
 }

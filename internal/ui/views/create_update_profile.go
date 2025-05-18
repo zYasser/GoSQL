@@ -5,11 +5,36 @@ import (
 	"GoSQL/internal/services"
 	"GoSQL/internal/ui/router"
 	"context"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-func InitiateCreateProfileView(ctx context.Context, pageIdx int) *tview.Flex {
+type CreateUpdateProfileView struct {
+	MainFlex *tview.Flex
+	Form     *tview.Form
+	Id       string
+	isUpdate bool
+}
+
+func (view *CreateUpdateProfileView) AddProfileToForm(id string) {
+	if id == "" {
+		return
+	}
+	profile, err := services.GetProfile(id)
+	if err != nil {
+		return
+	}
+	view.Form.GetFormItemByLabel("Profile Name").(*tview.InputField).SetText(profile.ProfileName)
+	view.Form.GetFormItemByLabel("Host").(*tview.InputField).SetText(profile.Host)
+	view.Form.GetFormItemByLabel("Port").(*tview.InputField).SetText(profile.Port)
+	view.Form.GetFormItemByLabel("Username").(*tview.InputField).SetText(profile.Username)
+	view.Form.GetFormItemByLabel("Database Name").(*tview.InputField).SetText(profile.DatabaseName)
+	view.Id = id
+	view.isUpdate = true
+}
+
+func InitiateCreateUpdateProfileView(ctx context.Context, pageIdx int) (*CreateUpdateProfileView, func(id string)) {
 	// Error message text view
 	errorText := tview.NewTextView().
 		SetTextColor(tcell.ColorRed).
@@ -22,16 +47,30 @@ func InitiateCreateProfileView(ctx context.Context, pageIdx int) *tview.Flex {
 		AddInputField("Username", "", 20, nil, nil).
 		AddPasswordField("Password", "", 20, '*', nil).
 		AddInputField("Database Name", "", 20, nil, nil)
-
+	hiddenField := tview.NewInputField()
+	profileView := &CreateUpdateProfileView{
+		Id:   "",
+		Form: form,
+	}
 	form.AddButton("Connect", func() {
 		// Validate form inputs
-		input := getDatabaseConfig(form)
+		input := getDatabaseConfig(form, profileView.Id)
 		if validateInput(input, errorText) {
-			err := services.CreateProfile(*input, ctx)
-			if err != nil {
-				errorText.SetText(err.Error())
+			if profileView.isUpdate {
+				err := services.UpdateProfile(*input, profileView.Id, ctx)
+				if err != nil {
+					errorText.SetText(err.Error())
+					return
+				}
+			} else {
+				err := services.CreateProfile(*input, ctx)
+				if err != nil {
+					errorText.SetText(err.Error())
+					return
+				}
 			}
 		}
+		router.NavigatePage(config.Previous, pageIdx, ctx)
 	}).
 		AddButton("Cancel", func() {
 			router.NavigatePage(config.Previous, pageIdx, ctx)
@@ -86,8 +125,12 @@ func InitiateCreateProfileView(ctx context.Context, pageIdx int) *tview.Flex {
 	mainFlex.AddItem(errorText, 3, 1, false)
 
 	mainFlex.AddItem(tview.NewBox(), 0, 1, false)
+	mainFlex.AddItem(hiddenField, 0, 0, false)
+	profileView.MainFlex = mainFlex
+	return profileView, func(id string) {
 
-	return mainFlex
+		profileView.AddProfileToForm(id)
+	}
 }
 
 // Validate input and display error messages
@@ -119,15 +162,15 @@ func validateInput(input *config.DatabaseConnectionInput, errorView *tview.TextV
 	return true
 }
 
-func getDatabaseConfig(form *tview.Form) *config.DatabaseConnectionInput {
+func getDatabaseConfig(form *tview.Form, id string) *config.DatabaseConnectionInput {
 	profileName := form.GetFormItemByLabel("Profile Name").(*tview.InputField).GetText()
 	host := form.GetFormItemByLabel("Host").(*tview.InputField).GetText()
 	port := form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
 	username := form.GetFormItemByLabel("Username").(*tview.InputField).GetText()
 	password := form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
 	databaseName := form.GetFormItemByLabel("Database Name").(*tview.InputField).GetText()
-
 	return &config.DatabaseConnectionInput{
+		ID:           id,
 		ProfileName:  profileName,
 		Host:         host,
 		Port:         port,

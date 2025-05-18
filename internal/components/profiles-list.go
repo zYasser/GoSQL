@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -16,9 +17,32 @@ type ProfileListUI struct {
 	Profiles *[]config.DatabaseConnectionInput
 }
 
-func InitiateProfileList(ctx context.Context) *ProfileListUI {
-	profiles, err := services.GetProfiles()
-	main := tview.NewFlex()
+func InitiateProfileList(ctx context.Context) (*ProfileListUI, func()) {
+	ui := &ProfileListUI{
+		MainFlex: tview.NewFlex(),
+	}
+
+	ui.renderProfileList(ctx)
+
+	ui.MainFlex.AddItem(ui.List, 0, 1, true)
+	ui.List.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlD {
+			ui.deleteProfile()
+		}
+		return event
+	})
+	return ui, func() {
+		ui.renderProfileList(ctx)
+	}
+}
+func (p *ProfileListUI) GetSelectedProfile() config.DatabaseConnectionInput {
+	selectedItem := p.List.GetCurrentItem()
+	return (*p.Profiles)[selectedItem]
+}
+
+func (p *ProfileListUI) deleteProfile() {
+	selectedItem := p.List.GetCurrentItem()
+	err := services.DeleteProfile((*p.Profiles)[selectedItem].ID)
 	if err != nil {
 		modal := tview.NewModal().
 			SetText(err.Error()).
@@ -28,9 +52,37 @@ func InitiateProfileList(ctx context.Context) *ProfileListUI {
 					os.Exit(1)
 				}
 			})
-		main.AddItem(modal, 1, 1, true)
-		return &ProfileListUI{MainFlex: main}
+		p.MainFlex.AddItem(modal, 1, 1, true)
+		return
+
 	}
+	p.List.RemoveItem(selectedItem)
+}
+
+func (p *ProfileListUI) renderProfileList(ctx context.Context) {
+	if p.List != nil {
+		p.List.Clear()
+	}
+	profiles, err := services.GetProfiles()
+
+	if err != nil {
+		modal := tview.NewModal().
+			SetText(err.Error()).
+			AddButtons([]string{"Quit"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				if buttonLabel == "Quit" {
+					os.Exit(1)
+				}
+			})
+		p.MainFlex.AddItem(modal, 1, 1, true)
+		return
+	}
+
+	profileList := make([]config.DatabaseConnectionInput, 0)
+	for _, value := range profiles {
+		profileList = append(profileList, value)
+	}
+	p.Profiles = &profileList
 	items := []ListProps{}
 	for _, value := range profiles {
 		items = append(items, ListProps{
@@ -38,13 +90,8 @@ func InitiateProfileList(ctx context.Context) *ProfileListUI {
 			secondaryText: fmt.Sprintf("Database:%s", value.DatabaseName),
 		})
 	}
-	list := createList(items)
-	list.SetBorder(true).SetTitle("Choose Profile")
-	main.AddItem(list, 0, 1, true)
+	
+	p.List = createList(items, p.List)
+	p.List.SetBorder(true).SetTitle("Choose Profile")
 
-	return &ProfileListUI{
-		MainFlex: main,
-		List:     list,
-		Profiles: &profiles,
-	}
 }

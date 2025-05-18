@@ -4,6 +4,7 @@ import (
 	"GoSQL/internal/config"
 	"GoSQL/internal/ui/views"
 	"context"
+	"fmt"
 
 	"github.com/rivo/tview"
 )
@@ -22,26 +23,38 @@ func InitializePages(ctx context.Context, app *tview.Application) *config.UIConf
 	// queryPage := views.InitializeQueryView(ctx, pageIndex)
 	profilePageView := views.InitProfileView(pageIndex, ctx)
 	pageIndex++
-	createProfilePageView := views.InitiateCreateProfileView(ctx, pageIndex)
+	createUpdateProfilePageView, createUpdateProfileFunc := views.InitiateCreateUpdateProfileView(ctx, pageIndex)
 	pageIndex++
 	queryPage, queryfunc := views.NewQueryViewPage(ctx, pageIndex)
 	pageIndex++
 
 	uiConfig.Main.AddPage(string(config.ProfilePage), profilePageView.MainGrid, true, true)
-	uiConfig.Main.AddPage(string(config.CreateProfilePage), createProfilePageView, true, false)
+	uiConfig.Main.AddPage(string(config.CreateProfilePage), createUpdateProfilePageView.MainFlex, true, false)
 	uiConfig.Main.AddPage(string(config.QueryPage), queryPage, true, false)
 
 	uiConfig.ViewsIndexMap[0] = config.PageConfig{
-		Page:     string(config.ProfilePage),
-		PageFunc: func() {},
+		Page: string(config.ProfilePage),
+		PageFunc: func(args ...interface{}) {
+			profilePageView.RenderFunction()
+		},
 	}
 	uiConfig.ViewsIndexMap[1] = config.PageConfig{
-		Page:     string(config.CreateProfilePage),
-		PageFunc: func() {},
+		Page: string(config.CreateProfilePage),
+		PageFunc: func(args ...interface{}) {
+			if len(args) == 0 {
+				createUpdateProfileFunc("")
+			} else {
+				fmt.Println(args[0].(string))
+				createUpdateProfileFunc(args[0].(string))
+
+			}
+		},
 	}
 	uiConfig.ViewsIndexMap[2] = config.PageConfig{
-		Page:     string(config.QueryPage),
-		PageFunc: queryfunc,
+		Page: string(config.QueryPage),
+		PageFunc: func(args ...interface{}) {
+			queryfunc()
+		},
 	}
 
 	return uiConfig

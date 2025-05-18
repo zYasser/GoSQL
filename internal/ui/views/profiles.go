@@ -11,10 +11,11 @@ import (
 )
 
 type ProfileView struct {
-	MainGrid   *tview.Grid
-	list       *tview.List
-	buttonGrid *tview.Grid
-	errorText  *tview.TextView
+	MainGrid       *tview.Grid
+	list           *tview.List
+	buttonGrid     *tview.Grid
+	errorText      *tview.TextView
+	RenderFunction func()
 }
 
 func InitProfileView(currentPage int, ctx context.Context) *ProfileView {
@@ -24,7 +25,7 @@ func InitProfileView(currentPage int, ctx context.Context) *ProfileView {
 		SetRows(1, 1, 1, 0, 1, 1, 1).
 		SetColumns(1, 1, 1, 0, 1, 1, 1)
 
-	list := components.InitiateProfileList(ctx)
+	list, function := components.InitiateProfileList(ctx)
 
 	buttonGrid := components.CreateProfileFooter(ctx, mainGrid)
 	errorText := tview.NewTextView().
@@ -35,20 +36,23 @@ func InitProfileView(currentPage int, ctx context.Context) *ProfileView {
 	contentGrid := tview.NewGrid().
 		SetRows(0, 1, 1).
 		AddItem(list.MainFlex, 0, 0, 1, 1, 0, 0, true).
-		AddItem(buttonGrid, 1, 0, 1, 1, 0, 0, false).
+		AddItem(buttonGrid.MainGrid, 1, 0, 1, 1, 0, 0, false).
 		AddItem(errorText, 2, 0, 1, 1, 0, 0, false)
 
 	mainGrid.AddItem(contentGrid, 3, 3, 1, 1, 0, 0, true)
 	uiConfig.App.SetFocus(list.MainFlex)
 
 	view := &ProfileView{
-		MainGrid:   mainGrid,
-		list:       list.List,
-		buttonGrid: buttonGrid,
-		errorText:  errorText,
+		MainGrid:       mainGrid,
+		list:           list.List,
+		buttonGrid:     buttonGrid.MainGrid,
+		errorText:      errorText,
+		RenderFunction: function,
 	}
-
-	// ✅ Wire up list behavior
+	buttonGrid.UpdateButton.SetSelectedFunc(func() {
+		id := list.GetSelectedProfile().ID
+		router.NavigatePage(config.CreateProfilePage, -1, ctx, id)
+	})
 	ListFunc(view, *list.Profiles, ctx, currentPage)
 
 	return view
@@ -67,3 +71,4 @@ func ListFunc(view *ProfileView, profiles []config.DatabaseConnectionInput, ctx 
 	})
 
 }
+

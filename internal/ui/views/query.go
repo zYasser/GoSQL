@@ -132,7 +132,7 @@ func (qv *queryView) LoadDatabaseData() {
 		qv.showStatus("Error", fmt.Sprintf("Failed to get tables: %v", err))
 		return
 	}
-
+	qv.app.SetFocus(qv.tree)
 	// Update the tree with the retrieved data
 	root := qv.tree.GetRoot()
 	root.ClearChildren()
@@ -204,9 +204,6 @@ func (qv *queryView) switchComponents() {
 			if !qv.isStatusModalDisplayed {
 				qv.app.SetFocus(qv.table)
 			}
-		case tcell.KeyCtrlW:
-			qv.app.SetFocus(qv.detailView)
-
 		case tcell.KeyEscape:
 			if qv.isStatusModalDisplayed {
 				qv.hideStatus()
@@ -215,6 +212,7 @@ func (qv *queryView) switchComponents() {
 		}
 		return event
 	})
+
 }
 
 func (qv *queryView) createItemTree(rows map[string][]string) *tview.TreeView {
@@ -384,9 +382,16 @@ func (qv *queryView) createDataTable() *tview.Table {
 		switch event.Key() {
 		case tcell.KeyCtrlR:
 			qv.undoDataChange()
-		case tcell.KeyCtrlS:
-			qv.submitDataChange()
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'e': // Capital E
+				qv.app.SetFocus(qv.detailView)
+			case 's':
+				qv.submitDataChange()
+			}
+
 		}
+
 		return event
 
 	})

@@ -3,10 +3,9 @@ package router
 import (
 	"GoSQL/internal/config"
 	"context"
-	"fmt"
 )
 
-func NavigatePage(page config.Page, currentPageIndex int, ctx context.Context) {
+func NavigatePage(page config.Page, currentPageIndex int, ctx context.Context, args ...interface{}) {
 	uiConfig := ctx.Value("ui-config").(*config.UIConfig)
 
 	var newPageIndex int
@@ -23,21 +22,20 @@ func NavigatePage(page config.Page, currentPageIndex int, ctx context.Context) {
 			}
 
 		}
-		switchToPageView(newPage, uiConfig)
+		switchToPageView(newPage, uiConfig, args...)
 		return
 	}
 
 	newPage, exists := uiConfig.ViewsIndexMap[newPageIndex]
 	if !exists {
-		fmt.Println("No Page Left")
 		return
 	}
 
-	switchToPageView(newPage, uiConfig)
+	switchToPageView(newPage, uiConfig, args...)
 }
 
-func switchToPageView(page config.PageConfig, config *config.UIConfig) {
+func switchToPageView(page config.PageConfig, config *config.UIConfig, args ...interface{}) {
 	config.Main.SwitchToPage(page.Page)
-	page.PageFunc()
+	page.PageFunc(args...)
 
 }
