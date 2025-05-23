@@ -6,9 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 func GetProfiles() (map[string]config.DatabaseConnectionInput, error) {

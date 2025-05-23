@@ -4,9 +4,7 @@ import (
 	"GoSQL/internal/config"
 	"GoSQL/internal/ui/router"
 	"context"
-	"log"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -26,24 +24,10 @@ func CreateProfileFooter(ctx context.Context, mainGrid *tview.Grid) *ProfileFoot
 	newButton := tview.NewButton("New").SetSelectedFunc(func() {
 		router.NavigatePage(config.CreateProfilePage, -1, ctx, "")
 	})
-	uiConfig, ok := ctx.Value("ui-config").(*config.UIConfig)
-	if !ok {
-		log.Fatalln("Error Failed To Get App ")
-	}
 	buttonGrid.
 		AddItem(newButton, 0, 0, 1, 1, 1, 1, true).
 		AddItem(updateButton, 0, 1, 1, 1, 1, 1, true)
 
-	mainGrid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Rune() {
-		case 'n':
-			uiConfig.App.SetFocus(newButton)
-		case 'u':
-			uiConfig.App.SetFocus(updateButton)
-
-		}
-		return event
-	})
 	return &ProfileFooterUI{
 		MainGrid:     buttonGrid,
 		UpdateButton: updateButton,

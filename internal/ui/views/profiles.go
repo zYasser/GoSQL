@@ -54,7 +54,7 @@ func InitProfileView(currentPage int, ctx context.Context) *ProfileView {
 		router.NavigatePage(config.CreateProfilePage, -1, ctx, id)
 	})
 	ListFunc(view, *list.Profiles, ctx, currentPage)
-
+	InputCapture(view, uiConfig, buttonGrid,)
 	return view
 }
 
@@ -72,3 +72,19 @@ func ListFunc(view *ProfileView, profiles []config.DatabaseConnectionInput, ctx 
 
 }
 
+func InputCapture(view *ProfileView, uiConfig *config.UIConfig, ProfileFooterUI *components.ProfileFooterUI) {
+	uiConfig.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'n':
+			uiConfig.App.SetFocus(ProfileFooterUI.NewButton)
+			return event
+		case 'u':
+			uiConfig.App.SetFocus(ProfileFooterUI.UpdateButton)
+			return event
+		case 'p':
+			uiConfig.App.SetFocus(view.list)
+			return event
+		}
+		return event
+	})
+}
