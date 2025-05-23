@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -82,6 +83,9 @@ func (p *ProfileListUI) renderProfileList(ctx context.Context) {
 	for _, value := range profiles {
 		profileList = append(profileList, value)
 	}
+	sort.Slice(profileList, func(i, j int) bool {
+		return profileList[i].ProfileName < profileList[j].ProfileName
+	})
 	p.Profiles = &profileList
 	items := []ListProps{}
 	for _, value := range profiles {
@@ -90,7 +94,9 @@ func (p *ProfileListUI) renderProfileList(ctx context.Context) {
 			secondaryText: fmt.Sprintf("Database:%s", value.DatabaseName),
 		})
 	}
-	
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].mainText < items[j].mainText
+	})
 	p.List = createList(items, p.List)
 	p.List.SetBorder(true).SetTitle("Choose Profile")
 

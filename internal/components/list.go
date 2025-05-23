@@ -13,6 +13,7 @@ func createList(props []ListProps, list *tview.List) *tview.List {
 	if list == nil {
 		list = tview.NewList()
 	}
+	
 	for _, prop := range props {
 		list.AddItem(prop.mainText, prop.secondaryText, prop.shortcut, prop.selected)
 	}

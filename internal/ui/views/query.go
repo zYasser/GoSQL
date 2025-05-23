@@ -381,7 +381,7 @@ func (qv *queryView) createDataTable() *tview.Table {
 	dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlR:
-			qv.undoDataChange()
+			qv.reset()
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'e': // Capital E
@@ -463,7 +463,7 @@ func (qv *queryView) createDetailView() *tview.TextArea {
 	detailView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlR:
-			qv.undoDataChange()
+			qv.reset()
 		case tcell.KeyCtrlS:
 			qv.submitDataChange()
 
@@ -475,7 +475,7 @@ func (qv *queryView) createDetailView() *tview.TextArea {
 	return detailView
 }
 
-func (qv *queryView) undoDataChange() {
+func (qv *queryView) reset() {
 	currentCell := qv.table.GetCell(qv.x, qv.y)
 	style := qv.table.GetCell(0, 0).Style
 	qv.detailView.SetText(qv.data[qv.x][qv.y], true)
@@ -517,8 +517,16 @@ func (qv *queryView) submitDataChange() {
 	err := services.GenerateSQL(updates, qv.pk, qv.tableName, qv.context)
 	if err != nil {
 		qv.showStatus("Error", err.Error())
-
+		return
 	}
+	for i := range qv.newData {
+		for j := range qv.newData[i] {
+			qv.newData[i][j] = false
+			currentCell := qv.table.GetCell(i, j)
+			currentCell.SetStyle(qv.table.GetCell(0, 0).Style)
+		}
+	}
+
 }
 func (qv *queryView) getPrimaryKeyIndex() int {
 	if len(qv.data) == 0 || len(qv.data[0]) == 0 {
